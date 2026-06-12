@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# venv
+.venv/
+venv/
+
+# 环境变量 / 密钥（绝不提交）
+.env
+
+# macOS
+.DS_Store
+
+# 运行时数据（录制/会话/向量库都在 ~/.sunlens，不在仓库内；以防万一）
+.sunlens/
+skills/

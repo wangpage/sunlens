@@ -1,0 +1,47 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sunlens"
+version = "0.0.1"
+description = "向日葵学徒 — 监测向日葵远控窗口，用 Qwen-VL 看懂对方在做什么并学习其工作方法（macOS）"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{ name = "SunLens" }]
+keywords = ["sunlogin", "remote-desktop", "screen-capture", "qwen-vl", "macos"]
+
+dependencies = [
+    # 配置 / 日志
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "loguru",
+    # 进程检测
+    "psutil",
+    # 图像
+    "Pillow",
+    # HTTP（调用 DashScope OpenAI 兼容端点）
+    "requests",
+    # 主控端鼠标/键盘事件捕获
+    "pynput",
+    # 音频采集 + 本地 Whisper 转写（M2）
+    "numpy",
+    "sounddevice",
+    "faster-whisper",
+    # macOS 原生：窗口枚举 + 单窗口截图 + Apple Vision OCR
+    "pyobjc-framework-Quartz; sys_platform == 'darwin'",
+    "pyobjc-framework-Cocoa; sys_platform == 'darwin'",
+    "pyobjc-framework-Vision; sys_platform == 'darwin'",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff"]
+
+[project.scripts]
+sunlens = "engine.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["engine"]
+
+[tool.ruff]
+line-length = 100
