@@ -90,6 +90,19 @@ CREATE TABLE IF NOT EXISTS vector (
     vec         BLOB NOT NULL     -- 归一化 float32
 );
 
+CREATE TABLE IF NOT EXISTS session_intent (
+    session_id  TEXT PRIMARY KEY REFERENCES session(id),
+    data        TEXT NOT NULL,    -- JSON：task/why/info_sought/outcome/confidence/reflection
+    created_at  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS intent_feedback (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id  TEXT,
+    correction  TEXT NOT NULL,    -- 用户对意图理解的纠正（喂回模型当上下文，越用越准）
+    created_at  TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_vector_session ON vector(session_id);
 CREATE INDEX IF NOT EXISTS idx_vector_kind ON vector(kind);
 CREATE INDEX IF NOT EXISTS idx_frame_session ON frame(session_id);
@@ -268,6 +281,16 @@ class DB:
         self.conn.commit()
         return int(cur.lastrowid)
 
+    def delete_session_manuals(self, session_id: str, kind: str | None = None) -> None:
+        """删除某会话的手册（同会话重新生成时先删后插，避免重复堆积）。"""
+        if kind:
+            self.conn.execute(
+                "DELETE FROM skill_manual WHERE session_id = ? AND kind = ?", (session_id, kind)
+            )
+        else:
+            self.conn.execute("DELETE FROM skill_manual WHERE session_id = ?", (session_id,))
+        self.conn.commit()
+
     def list_manuals(self, limit: int = 100) -> list[dict]:
         rows = self.conn.execute(
             "SELECT id, session_id, title, kind, path, created_at FROM skill_manual"
@@ -325,5 +348,36 @@ class DB:
             " FROM transcript WHERE text LIKE ?"
             " ORDER BY ts LIMIT ?",
             (like, like, limit),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    # ---- 意图理解（会话级 task/why/info_sought/outcome + 反思）----
+    def upsert_intent(self, session_id: str, data_json: str) -> None:
+        self.conn.execute(
+            "INSERT INTO session_intent (session_id, data, created_at) VALUES (?, ?, ?)"
+            " ON CONFLICT(session_id) DO UPDATE SET data=excluded.data, created_at=excluded.created_at",
+            (session_id, data_json, _now()),
+        )
+        self.conn.commit()
+
+    def get_intent(self, session_id: str) -> dict | None:
+        row = self.conn.execute(
+            "SELECT data, created_at FROM session_intent WHERE session_id = ?", (session_id,)
+        ).fetchone()
+        return dict(row) if row else None
+
+    # ---- 反馈记忆（用户纠正 → 下次作为上下文喂回，越用越准）----
+    def add_feedback(self, session_id: str | None, correction: str) -> int:
+        cur = self.conn.execute(
+            "INSERT INTO intent_feedback (session_id, correction, created_at) VALUES (?, ?, ?)",
+            (session_id, correction, _now()),
+        )
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    def recent_feedback(self, limit: int = 5) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT session_id, correction, created_at FROM intent_feedback"
+            " ORDER BY created_at DESC LIMIT ?", (limit,)
         ).fetchall()
         return [dict(r) for r in rows]

@@ -1,7 +1,8 @@
 """录制控制器（借 openadapt-desktop/controller.py 的生命周期 + state.json 恢复）。
 
-事件驱动抓帧主循环：低频轮询远控窗口 → aHash 去重 → 仅画面变化/有输入/idle 时落帧；
-你的鼠标键盘事件全程累积落库。窗口消失超过 grace 即自动结束会话。
+事件驱动抓帧主循环：低频轮询目标窗口 → aHash 去重 → 仅画面变化/有输入/idle 时落帧；
+你的鼠标键盘事件全程累积落库。目标窗口消失（如切走标签页）超过 grace 即自动结束会话，
+所以只在你真正操作目标（fnOS NAS 会话）时才记录。
 """
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ from pathlib import Path
 
 from loguru import logger
 
-from engine.capture.detector import pick_remote_window
+from engine.capture.detector import pick_target_window
 from engine.capture.framediff import average_hash, diff_ratio, hash_to_hex
 from engine.capture.input_hook import InputHook
 from engine.capture.window_grabber import capture_window
@@ -46,7 +47,6 @@ class Recorder:
         self._session_id: str | None = None
         self._session_dir: Path | None = None
         self._hook: InputHook | None = None
-        self._audio = None  # AudioSession | None
 
     # ---- 信号 ----
     def request_stop(self, *_: object) -> None:
@@ -61,11 +61,30 @@ class Recorder:
                 pass  # 非主线程
 
     # ---- 主流程 ----
+    def _wait_for_target(self):
+        """开录后轮询等待目标窗口出现（给你时间切到 NAS 标签页）。超时返回 None。"""
+        deadline = time.monotonic() + self.config.startup_wait_secs
+        announced = False
+        while not self._stop:
+            win = pick_target_window(self.config)
+            if win is not None:
+                return win
+            if not announced:
+                logger.info("等待目标窗口出现（切到 NAS 标签页即可，最多等 {:.0f}s）……",
+                            self.config.startup_wait_secs)
+                announced = True
+            if time.monotonic() >= deadline:
+                return None
+            time.sleep(0.5)
+        return None
+
     def start(self) -> str | None:
-        """前台阻塞录制，直到收到停止信号或远控窗口消失。返回 session_id。"""
-        win = pick_remote_window(self.config)
+        """前台阻塞录制，直到收到停止信号或目标窗口消失。返回 session_id。"""
+        self._install_signals()
+        win = self._wait_for_target()
         if win is None:
-            logger.error("未找到向日葵远控窗口，无法开录。先连入远程会话。")
+            logger.error("等待 {:.0f}s 仍未发现目标窗口，放弃。先打开并聚焦 fnOS NAS 会话窗口。",
+                         self.config.startup_wait_secs)
             return None
 
         session_id = datetime.now().strftime("%Y%m%d_%H%M%S_") + uuid.uuid4().hex[:6]
@@ -89,13 +108,6 @@ class Recorder:
             else:
                 self._hook = None
 
-        # 音频 + 转写（best-effort，与抓帧并行）
-        if self.config.audio_enabled:
-            from engine.capture.audio_session import AudioSession
-
-            audio = AudioSession(self.config, session_id, session_dir / "audio")
-            self._audio = audio if audio.start() else None
-
         logger.info("▶ 开始录制 session={} 窗口={!r} ({}x{})", session_id, win.title, win.width, win.height)
         frame_count = input_count = 0
         prev_hash: int | None = None
@@ -105,21 +117,21 @@ class Recorder:
         try:
             while not self._stop:
                 t = time.monotonic()
-                win = pick_remote_window(self.config)
+                win = pick_target_window(self.config)
 
-                if win is None:  # 窗口没了
+                if win is None:  # 目标窗口没了（切走标签页/关闭）
                     input_count += self._flush_inputs(session_id)
                     if window_lost_since is None:
                         window_lost_since = t
                     elif t - window_lost_since >= self.config.window_lost_grace_secs:
-                        logger.info("远控窗口已消失，自动结束会话。")
+                        logger.info("目标窗口已消失，自动结束会话。")
                         break
                     time.sleep(self.config.poll_interval_secs)
                     continue
                 window_lost_since = None
 
                 try:
-                    img = capture_window(win.window_id)
+                    img = capture_window(win)
                 except Exception as e:
                     logger.warning("抓帧失败: {}", e)
                     time.sleep(self.config.poll_interval_secs)
@@ -168,8 +180,6 @@ class Recorder:
     def _finalize(self, frame_count: int, input_count: int, status: str) -> None:
         if self._hook:
             self._hook.stop()
-        if self._audio:
-            self._audio.stop()
         if self._session_id:
             self.db.update_session(
                 self._session_id, status=status, ended_at=_now_iso(),

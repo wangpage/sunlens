@@ -5,33 +5,25 @@ build-backend = "hatchling.build"
 [project]
 name = "sunlens"
 version = "0.0.1"
-description = "向日葵学徒 — 监测向日葵远控窗口，用 Qwen-VL 看懂对方在做什么并学习其工作方法（macOS）"
+description = "SunLens 学徒 — 实时记录你操作目标窗口（默认 fnOS NAS），用本地 Ollama qwen3-vl 看懂每一步在做什么（Windows）"
 requires-python = ">=3.11"
 license = "MIT"
 authors = [{ name = "SunLens" }]
-keywords = ["sunlogin", "remote-desktop", "screen-capture", "qwen-vl", "macos"]
+keywords = ["fnos", "nas", "screen-capture", "activity-log", "qwen-vl", "ollama", "windows"]
 
 dependencies = [
     # 配置 / 日志
     "pydantic>=2.0",
     "pydantic-settings>=2.0",
     "loguru",
-    # 进程检测
+    # 进程检测（窗口枚举走 ctypes，无需 pywin32）
     "psutil",
-    # 图像
+    # 图像（截图 PIL.ImageGrab + 压缩）
     "Pillow",
-    # HTTP（调用 DashScope OpenAI 兼容端点）
+    # HTTP（调用本地 Ollama OpenAI 兼容端点）
     "requests",
     # 主控端鼠标/键盘事件捕获
     "pynput",
-    # 音频采集 + 本地 Whisper 转写（M2）
-    "numpy",
-    "sounddevice",
-    "faster-whisper",
-    # macOS 原生：窗口枚举 + 单窗口截图 + Apple Vision OCR
-    "pyobjc-framework-Quartz; sys_platform == 'darwin'",
-    "pyobjc-framework-Cocoa; sys_platform == 'darwin'",
-    "pyobjc-framework-Vision; sys_platform == 'darwin'",
 ]
 
 [project.optional-dependencies]

@@ -1,0 +1,5 @@
+# 基于 qwen3-vl:32b-instruct，把超大默认上下文(262144)砍到 8192。
+# 我们的帧理解/意图/SOP prompt 都远小于 8K，过大的 num_ctx 只会撑爆 KV 缓存、
+# 逼模型溢出到 CPU。砍小后 32B 能更多吃进 Radeon 8060S，速度大幅改善。
+FROM qwen3-vl:32b-instruct
+PARAMETER num_ctx 8192

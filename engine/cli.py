@@ -1,11 +1,13 @@
-"""SunLens CLI（M0）。
+"""SunLens CLI（Windows + 本地 Ollama）。
 
 命令：
-  sunlens doctor   —— 体检：平台/依赖/权限/向日葵窗口/API Key
-  sunlens windows  —— 列出当前所有窗口（调试用，找向日葵 owner/title 规律）
-  sunlens peek      —— M0 demo：抓远控窗口一帧 → 涂码 → Qwen-VL 看懂 → 打印
-
-借 openadapt-desktop/engine/cli.py 的 argparse 子命令 + 字典调度模式。
+  doctor   —— 体检：平台/Ollama/目标窗口/截图
+  windows  —— 列出当前窗口（调试，找目标 owner/title 规律）
+  peek     —— demo：抓目标窗口一帧 → 本地 qwen3-vl 看懂 → 打印
+  start/stop/list/frames/recover —— 录制 + 会话管理
+  understand/actions —— 把帧理解成 ActionStep + 查看
+  sop      —— 把会话动作流总结成 SOP/操作手册（本地模型）
+  serve    —— 本地仪表盘
 """
 
 from __future__ import annotations
@@ -15,6 +17,7 @@ import platform
 import sys
 from datetime import datetime, timezone
 
+import requests
 from loguru import logger
 
 from engine.config import SunLensConfig, load_config
@@ -33,76 +36,46 @@ def cmd_doctor(args: argparse.Namespace, config: SunLensConfig) -> None:
     print("SunLens 体检\n" + "=" * 40)
 
     # 1. 平台
-    is_mac = platform.system() == "Darwin"
-    print(f"{_OK if is_mac else _BAD} 平台: {platform.system()} {platform.mac_ver()[0]}")
-    if not is_mac:
-        print("   本工具仅支持 macOS，后续检查跳过。")
-        return
+    is_win = platform.system() == "Windows"
+    print(f"{_OK if is_win else _WARN}平台: {platform.system()} {platform.release()}")
 
-    # 2. 依赖
+    # 2. 本地 Ollama 可达性 + 模型在列
     try:
-        import Quartz  # noqa: F401
-
-        print(f"{_OK} pyobjc Quartz 可用（窗口枚举/截图）")
+        v = requests.get(config.ollama_base_url.replace("/v1", "") + "/api/version", timeout=5)
+        print(f"{_OK} Ollama 在线：v{v.json().get('version', '?')}（{config.ollama_base_url}）")
+        tags = requests.get(config.ollama_base_url.replace("/v1", "") + "/api/tags", timeout=5)
+        names = [m["name"] for m in tags.json().get("models", [])]
+        if config.vlm_model in names:
+            print(f"{_OK} 视觉模型已就绪：{config.vlm_model}")
+        else:
+            print(f"{_BAD} 缺模型 {config.vlm_model}。请 `ollama pull {config.vlm_model}`。可用：{names}")
     except Exception as e:
-        print(f"{_BAD} pyobjc Quartz 不可用：{e}")
-    try:
-        import Vision  # noqa: F401
+        print(f"{_BAD} 连不上 Ollama（{config.ollama_base_url}）：{e}")
+        print("   请先启动 Ollama（ollama serve）。")
 
-        print(f"{_OK} Apple Vision 可用（OCR/PII 定位）")
-    except Exception as e:
-        print(f"{_WARN}Apple Vision 不可用：{e}（脱敏将退化为不涂码）")
+    # 3. 目标窗口（默认 fnOS NAS 网页会话）+ 截图
+    from engine.capture.detector import find_target_windows, pick_target_window
 
-    # 3. API Key
-    if config.dashscope_api_key:
-        masked = config.dashscope_api_key[:6] + "…" + config.dashscope_api_key[-4:]
-        print(f"{_OK} DASHSCOPE_API_KEY 已设置 ({masked})，模型={config.qwen_model}")
-    else:
-        print(f"{_BAD} 未检测到 DASHSCOPE_API_KEY（export DASHSCOPE_API_KEY=sk-xxx）")
-
-    # 4. 向日葵进程
-    from engine.capture.detector import (
-        find_sunlogin_windows,
-        is_sunlogin_running,
-        pick_remote_window,
-    )
-
-    procs = is_sunlogin_running(config)
-    if procs:
-        names = ", ".join(sorted({p.info.get("name", "?") for p in procs}))
-        print(f"{_OK} 向日葵进程在运行：{names}（{len(procs)} 个）")
-    else:
-        print(f"{_WARN}未发现向日葵进程（匹配名：{config.sunlogin_process_names}）")
-
-    # 5. 向日葵窗口 + 截图权限
-    try:
-        wins = find_sunlogin_windows(config)
-    except RuntimeError as e:
-        print(f"{_BAD} 窗口枚举失败：{e}")
-        return
-
+    wins = find_target_windows(config)
     if not wins:
-        print(f"{_WARN}未发现向日葵窗口。请确认已连入一个远程会话。")
+        print(f"{_WARN}未发现目标窗口（匹配规则：{config.target_window_patterns}）。"
+              f"请打开并聚焦 fnOS NAS 会话窗口。")
     else:
-        print(f"{_OK} 发现 {len(wins)} 个向日葵相关窗口：")
+        print(f"{_OK} 发现 {len(wins)} 个目标相关窗口：")
         for w in wins:
-            print(f"     id={w.window_id} owner={w.owner!r} title={w.title!r} {w.width}x{w.height} layer={w.layer}")
-
-        remote = pick_remote_window(config)
-        if remote:
-            print(f"{_OK} 选中远控窗口：id={remote.window_id} {remote.width}x{remote.height}")
-            # 试截一帧验证「屏幕录制」权限
+            print(f"     hwnd={w.window_id} owner={w.owner!r} title={w.title!r} {w.width}x{w.height}")
+        target = pick_target_window(config)
+        if target:
+            print(f"{_OK} 选中目标窗口：hwnd={target.window_id} {target.width}x{target.height}")
             try:
                 from engine.capture.window_grabber import capture_window
 
-                img = capture_window(remote.window_id)
-                print(f"{_OK} 截图权限正常，截到 {img.size[0]}x{img.size[1]}")
+                img = capture_window(target)
+                print(f"{_OK} 截图正常，截到 {img.size[0]}x{img.size[1]}")
             except Exception as e:
-                print(f"{_BAD} 截图失败（多半是缺「屏幕录制」权限）：{e}")
-                print("   去 系统设置 > 隐私与安全性 > 屏幕录制 勾选你的终端/IDE。")
+                print(f"{_BAD} 截图失败：{e}")
         else:
-            print(f"{_WARN}没有窗口达到远控尺寸阈值，可能还没进远程会话。")
-
+            print(f"{_WARN}没有窗口达到尺寸阈值。")
     print("=" * 40)
 
 
@@ -111,62 +84,36 @@ def cmd_windows(args: argparse.Namespace, config: SunLensConfig) -> None:
     from engine.capture.detector import list_windows
 
     for w in list_windows():
-        if args.all or w.layer == 0:
-            print(f"id={w.window_id:<7} pid={w.pid:<7} {w.width}x{w.height}\tlayer={w.layer}\towner={w.owner!r}\ttitle={w.title!r}")
+        print(f"hwnd={w.window_id:<9} pid={w.pid:<7} {w.width}x{w.height}\towner={w.owner!r}\ttitle={w.title!r}")
 
 
 # ----------------------------------------------------------------------------- peek
 def cmd_peek(args: argparse.Namespace, config: SunLensConfig) -> None:
-    from engine.capture.detector import pick_remote_window
+    from engine.capture.detector import pick_target_window
     from engine.capture.window_grabber import capture_window
-    from engine.privacy.gate import check_egress_allowed
-    from engine.privacy.scrubber import scrub_image
-    from engine.understand.backend import FrameContext
-    from engine.understand.qwen_cloud import QwenCloudBackend
+    from engine.understand.vlm import FrameContext, describe_frame
 
-    # 1. 定位远控窗口
-    remote = pick_remote_window(config)
-    if remote is None:
-        print(f"{_BAD} 没找到向日葵远控窗口。先连入一个远程会话，再跑 `sunlens doctor` 确认。")
+    target = pick_target_window(config)
+    if target is None:
+        print(f"{_BAD} 没找到目标窗口。先打开并聚焦 fnOS NAS 会话窗口，再跑 `sunlens doctor` 确认。")
         sys.exit(1)
-    print(f"{_OK} 远控窗口 id={remote.window_id} {remote.width}x{remote.height} title={remote.title!r}")
+    print(f"{_OK} 目标窗口 hwnd={target.window_id} {target.width}x{target.height} title={target.title!r}")
 
-    # 2. 抓一帧
-    image = capture_window(remote.window_id)
+    image = capture_window(target)
     print(f"{_OK} 抓帧 {image.size[0]}x{image.size[1]}")
 
-    # 3. 本机涂码
-    scrubbed, redactions = scrub_image(image, config)
-    print(f"{_OK} 涂码完成，命中 {len(redactions)} 处 PII/敏感行")
-    for r in redactions:
-        print(f"     [{r.entity}] @({r.left},{r.top}) {r.width}x{r.height} hash={r.text_hash}")
-
-    # 4. 出口闸门：发图前强制校验
-    check_egress_allowed(
-        scrubbed=True,
-        redact_enabled=config.redact_enabled,
-        allow_unredacted=args.allow_unredacted,
-    )
-
-    # 落盘留存（仅脱敏图，便于你肉眼复核涂得干不干净）
+    # 落盘留存（便于肉眼复核）
     config.data_dir.mkdir(parents=True, exist_ok=True)
-    stamp = _now_stamp()
-    scrubbed_path = config.data_dir / f"peek_{stamp}.scrubbed.jpg"
-    scrubbed.convert("RGB").save(scrubbed_path, format="JPEG", quality=config.jpeg_quality)
-    print(f"{_OK} 脱敏图已存：{scrubbed_path}")
+    peek_path = config.data_dir / f"peek_{_now_stamp()}.jpg"
+    image.save(peek_path, format="JPEG", quality=config.jpeg_quality)
+    print(f"{_OK} 截图已存：{peek_path}")
 
-    # 5. 发 Qwen-VL 看懂
-    if not config.dashscope_api_key:
-        print(f"{_BAD} 缺 DASHSCOPE_API_KEY，跳过云端理解。脱敏图已存，可先肉眼检查涂码效果。")
-        sys.exit(1)
+    print("→ 发往本地 qwen3-vl 理解中……")
+    ctx = FrameContext(app_window_title=target.title, timestamp=_now_stamp())
+    u = describe_frame(config, image, ctx)
 
-    print("→ 发往 Qwen-VL（DashScope）理解中……")
-    backend = QwenCloudBackend(config)
-    ctx = FrameContext(app_window_title=remote.title, timestamp=stamp)
-    u = backend.describe_frame(scrubbed, ctx)
-
-    print("\n" + "=" * 40 + "\nQwen-VL 理解结果\n" + "=" * 40)
-    print(f"对方在做什么: {u.description}")
+    print("\n" + "=" * 40 + "\nqwen3-vl 理解结果\n" + "=" * 40)
+    print(f"在做什么    : {u.description}")
     if u.app:
         print(f"当前应用    : {u.app}")
     if u.search_query:
@@ -176,7 +123,7 @@ def cmd_peek(args: argparse.Namespace, config: SunLensConfig) -> None:
     print("=" * 40)
 
 
-# ----------------------------------------------------------------------------- 录制 (M1)
+# ----------------------------------------------------------------------------- 录制
 def _open_db(config: SunLensConfig):
     from engine.store.db import DB
 
@@ -211,7 +158,7 @@ def cmd_stop(args: argparse.Namespace, config: SunLensConfig) -> None:
         pid = int(pidfile.read_text().strip())
         os.kill(pid, signal.SIGTERM)
         print(f"{_OK} 已发送停止信号给录制进程 pid={pid}。")
-    except (ValueError, ProcessLookupError):
+    except (ValueError, ProcessLookupError, OSError):
         print(f"{_WARN}pidfile 失效，清理。")
         pidfile.unlink(missing_ok=True)
 
@@ -253,77 +200,14 @@ def cmd_recover(args: argparse.Namespace, config: SunLensConfig) -> None:
         db.close()
 
 
-# ----------------------------------------------------------------------------- 音频 (M2)
-def cmd_audio_devices(args: argparse.Namespace, config: SunLensConfig) -> None:
-    from engine.capture.audio import find_device, list_input_devices
-
-    devs = list_input_devices()
-    if not devs:
-        print(f"{_BAD} 没有可用输入设备（或缺 sounddevice）。")
-        return
-    mic = find_device(config.mic_device)
-    sysd = find_device(config.system_audio_device)
-    print("可用输入设备：")
-    for d in devs:
-        role = ""
-        if d["index"] == mic or (config.mic_device is None and mic is None and d["index"] == sd_default()):
-            role += " ←麦克风(你)" if d["index"] == mic else ""
-        if d["index"] == sysd:
-            role += " ←loopback(对方)"
-        print(f"  [{d['index']}] in={d['channels']} sr={d['samplerate']} {d['name']!r}{role}")
-    print(f"\n当前配置：mic={config.mic_device!r}(idx={mic})  "
-          f"loopback={config.system_audio_device!r}(idx={sysd})")
-    if sysd is None:
-        print(f"{_WARN}未找到 loopback 设备，将只录麦克风。对方声音需要向日葵虚拟声卡或 BlackHole。")
-
-
-def sd_default() -> int | None:
-    try:
-        import sounddevice as sd
-
-        return sd.default.device[0]
-    except Exception:
-        return None
-
-
-def cmd_transcribe(args: argparse.Namespace, config: SunLensConfig) -> None:
-    from engine.capture.transcribe import Transcriber
-
-    model = args.model or config.whisper_model
-    print(f"用模型 {model} 转写 {args.wav} ……")
-    tx = Transcriber(model, config.whisper_device, config.whisper_compute_type, config.whisper_language)
-    segs = tx.transcribe(args.wav)
-    if not segs:
-        print("（无语音内容或转写为空）")
-        return
-    for s in segs:
-        print(f"  [{s.start:6.2f}-{s.end:6.2f}] {s.text}")
-
-
-def cmd_transcript(args: argparse.Namespace, config: SunLensConfig) -> None:
-    db = _open_db(config)
-    try:
-        rows = db.list_transcripts(args.session_id)
-        if not rows:
-            print("（该会话暂无转写）")
-            return
-        for r in rows:
-            print(f"{r['ts_start'][11:19]} [{r['speaker']}] {r['text']}")
-    finally:
-        db.close()
-
-
-# ----------------------------------------------------------------------------- 理解 (M3)
+# ----------------------------------------------------------------------------- 理解
 def cmd_understand(args: argparse.Namespace, config: SunLensConfig) -> None:
     from engine.understand.action_builder import ActionBuilder
 
-    if not config.dashscope_api_key:
-        print(f"{_BAD} 缺 DASHSCOPE_API_KEY，无法调用 Qwen-VL 做理解。")
-        sys.exit(1)
     db = _open_db(config)
     try:
-        print(f"→ 理解会话 {args.session_id}（逐帧脱敏→Qwen-VL）……")
-        n = ActionBuilder(config, db).build_session(args.session_id, scrub=not args.no_scrub)
+        print(f"→ 理解会话 {args.session_id}（逐帧 → 本地 qwen3-vl）……")
+        n = ActionBuilder(config, db).build_session(args.session_id)
         print(f"{_OK} 生成 {n} 个 ActionStep。用 `sunlens actions {args.session_id}` 查看。")
     finally:
         db.close()
@@ -342,8 +226,60 @@ def cmd_actions(args: argparse.Namespace, config: SunLensConfig) -> None:
                 line += f" @{r['target_app']}"
             line += f" {r['nl_description'] or ''}"
             print(line)
-            if r["narration"]:
-                print(f"            🎙 {r['narration']}")
+    finally:
+        db.close()
+
+
+def cmd_sop(args: argparse.Namespace, config: SunLensConfig) -> None:
+    from engine.studio import generate_sop
+
+    db = _open_db(config)
+    try:
+        print(f"→ 把会话 {args.session_id} 的动作流总结成 SOP（本地模型）……")
+        res = generate_sop(config, db, args.session_id)
+        if res.get("type") == "error":
+            print(f"{_BAD} {res['error']}")
+            return
+        print(f"{_OK} 已生成《{res['title']}》(manual_id={res['manual_id']})，存入技能手册。\n")
+        print(res["data"])
+    finally:
+        db.close()
+
+
+def cmd_intent(args: argparse.Namespace, config: SunLensConfig) -> None:
+    from engine.intent import analyze_intent
+
+    db = _open_db(config)
+    try:
+        print(f"→ 分析会话 {args.session_id} 的用户意图（草稿 → 反思自检）……")
+        r = analyze_intent(config, db, args.session_id)
+        if r.get("error"):
+            print(f"{_BAD} {r['error']}")
+            return
+        print("\n" + "=" * 44 + "\n🎯 意图摘要\n" + "=" * 44)
+        print(f"任务      : {r.get('task', '')}")
+        print(f"动机      : {r.get('why', '')}")
+        info = r.get("info_sought") or []
+        print("想获取信息: " + ("；".join(info) if isinstance(info, list) else str(info)))
+        steps = r.get("key_steps") or []
+        if steps:
+            print("关键步骤  :")
+            for s in (steps if isinstance(steps, list) else [steps]):
+                print(f"   - {s}")
+        print(f"结论      : {r.get('outcome', '')}")
+        print(f"把握度    : {r.get('confidence', '')}")
+        if r.get("reflection"):
+            print(f"🤔 反思    : {r['reflection']}")
+        print("=" * 44)
+    finally:
+        db.close()
+
+
+def cmd_correct(args: argparse.Namespace, config: SunLensConfig) -> None:
+    db = _open_db(config)
+    try:
+        db.add_feedback(args.session_id, args.text)
+        print(f"{_OK} 已记下你的纠正，下次分析会作为上下文吸取（越用越准）。")
     finally:
         db.close()
 
@@ -352,39 +288,6 @@ def cmd_serve(args: argparse.Namespace, config: SunLensConfig) -> None:
     from engine.server.app import serve
 
     serve(config, port=args.port)
-
-
-def cmd_index(args: argparse.Namespace, config: SunLensConfig) -> None:
-    from engine.memory.index import index_session
-
-    if not config.dashscope_api_key:
-        print(f"{_BAD} 缺 DASHSCOPE_API_KEY，语义记忆需要嵌入模型。")
-        sys.exit(1)
-    db = _open_db(config)
-    try:
-        if args.all:
-            total = sum(index_session(config, db, s["id"]) for s in db.list_sessions(limit=1000))
-            print(f"{_OK} 索引 {total} 条，库内共 {db.count_vectors()} 条向量。")
-        else:
-            n = index_session(config, db, args.session_id)
-            print(f"{_OK} 索引 {n} 条，库内共 {db.count_vectors()} 条向量。")
-    finally:
-        db.close()
-
-
-def cmd_ask(args: argparse.Namespace, config: SunLensConfig) -> None:
-    from engine.memory.search import semantic_search
-
-    db = _open_db(config)
-    try:
-        hits = semantic_search(config, db, args.query)
-        if not hits:
-            print("（无命中；先 `sunlens index --all` 建索引）")
-            return
-        for h in hits:
-            print(f"  [{h['score']:.3f}] ({h['kind']}) {h['text'][:60]}")
-    finally:
-        db.close()
 
 
 _COMMANDS = {
@@ -397,32 +300,21 @@ _COMMANDS = {
     "list": cmd_list,
     "frames": cmd_frames,
     "recover": cmd_recover,
-    "audio-devices": cmd_audio_devices,
-    "transcribe": cmd_transcribe,
-    "transcript": cmd_transcript,
     "understand": cmd_understand,
     "actions": cmd_actions,
-    "index": cmd_index,
-    "ask": cmd_ask,
+    "sop": cmd_sop,
+    "intent": cmd_intent,
+    "correct": cmd_correct,
 }
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(prog="sunlens", description="向日葵学徒（M0）")
+    parser = argparse.ArgumentParser(prog="sunlens", description="SunLens 学徒（Windows + 本地 Ollama）")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    sub.add_parser("doctor", help="体检：平台/依赖/权限/向日葵窗口/API Key")
-
-    p_win = sub.add_parser("windows", help="列出当前窗口（调试）")
-    p_win.add_argument("--all", action="store_true", help="包含 layer>0 的系统窗口")
-
-    p_peek = sub.add_parser("peek", help="M0 demo：抓一帧→涂码→Qwen-VL 看懂")
-    p_peek.add_argument(
-        "--allow-unredacted",
-        action="store_true",
-        help="涂码关闭时仍允许发原图（调试用，慎用）",
-    )
-
+    sub.add_parser("doctor", help="体检：平台/Ollama/目标窗口/截图")
+    sub.add_parser("windows", help="列出当前窗口（调试）")
+    sub.add_parser("peek", help="demo：抓一帧→本地 qwen3-vl 看懂")
     sub.add_parser("start", help="开始录制（事件驱动抓帧+输入事件，Ctrl+C 停止）")
     sub.add_parser("stop", help="停止正在录制的会话")
 
@@ -435,31 +327,39 @@ def main(argv: list[str] | None = None) -> None:
 
     sub.add_parser("recover", help="把崩溃残留的会话标记为 recovered")
 
-    sub.add_parser("audio-devices", help="列出音频输入设备 + 当前角色映射")
-
-    p_tx = sub.add_parser("transcribe", help="转写一个 WAV 文件（测试用）")
-    p_tx.add_argument("wav")
-    p_tx.add_argument("--model", default=None, help="覆盖默认模型(tiny/base/small/medium)")
-
-    p_tr = sub.add_parser("transcript", help="查看某会话的转写")
-    p_tr.add_argument("session_id")
-
-    p_un = sub.add_parser("understand", help="把某会话的帧理解成 ActionStep（Qwen-VL）")
+    p_un = sub.add_parser("understand", help="把某会话的帧理解成 ActionStep（本地 qwen3-vl）")
     p_un.add_argument("session_id")
-    p_un.add_argument("--no-scrub", action="store_true", help="跳过脱敏(调试,慎用)")
 
     p_ac = sub.add_parser("actions", help="查看某会话的 ActionStep")
     p_ac.add_argument("session_id")
 
+    p_sop = sub.add_parser("sop", help="把某会话的动作流总结成 SOP/操作手册（本地模型）")
+    p_sop.add_argument("session_id")
+
+    p_intent = sub.add_parser("intent", help="会话级意图分析：任务/动机/想获取的信息/结论（含反思自检）")
+    p_intent.add_argument("session_id")
+
+    p_corr = sub.add_parser("correct", help="纠正某会话的意图理解（存入反馈记忆，越用越准）")
+    p_corr.add_argument("session_id")
+    p_corr.add_argument("text", help="你的纠正，例如：他其实在排查录像是否丢失")
+
     p_sv = sub.add_parser("serve", help="启动本地仪表盘(localhost:8088)")
     p_sv.add_argument("--port", type=int, default=8088)
 
-    p_ix = sub.add_parser("index", help="把会话向量化进语义记忆")
-    p_ix.add_argument("session_id", nargs="?", default=None)
-    p_ix.add_argument("--all", action="store_true", help="索引所有会话")
+    # Windows 控制台默认 GBK，强制 UTF-8 以输出 emoji/中文
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8")
+        except Exception:
+            pass
 
-    p_qa = sub.add_parser("ask", help="语义检索记忆（命令行版）")
-    p_qa.add_argument("query")
+    # 设进程 DPI-aware：让窗口矩形返回物理像素，PrintWindow 抓取尺寸才对得上
+    try:
+        import ctypes
+
+        ctypes.windll.user32.SetProcessDPIAware()
+    except Exception:
+        pass
 
     args = parser.parse_args(argv)
     config = load_config()

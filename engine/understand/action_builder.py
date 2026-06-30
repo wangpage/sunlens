@@ -1,12 +1,11 @@
-"""把「帧 + 输入事件 + 语音转写」融合成结构化 ActionStep（M3）。
+"""把「帧 + 输入事件」融合成结构化 ActionStep。
 
 对一个已录会话的每个关键帧：
-  1. 收集该帧时间窗内你的输入事件（点击/打字）和对方同时说的话；
-  2. 本机脱敏涂码（发云端前必须，复用 §5.2/§5.3）；
-  3. 过出口闸门 → 交给理解后端(默认 Qwen-VL 云，可注入 mock)；
-  4. 合成 ActionStep 落库。
+  1. 收集该帧时间窗内你的输入事件（点击/打字）；
+  2. 交给本地 qwen3-vl 看懂（vlm.describe_frame）；
+  3. 合成 ActionStep 落库。
 
-后端依赖注入：测试时传 mock，无需 API Key。
+本地推理，画面不出本机，无需脱敏/出口闸门。
 """
 
 from __future__ import annotations
@@ -14,11 +13,10 @@ from __future__ import annotations
 from loguru import logger
 from PIL import Image
 
+from engine.capture.framediff import _BITS, hamming
 from engine.config import SunLensConfig
-from engine.privacy.gate import check_egress_allowed
-from engine.privacy.scrubber import scrub_image
 from engine.store.db import DB
-from engine.understand.backend import FrameContext, UnderstandBackend
+from engine.understand.vlm import FrameContext, describe_frame
 
 
 def _summarize_inputs(events: list[dict]) -> list[str]:
@@ -50,49 +48,59 @@ def _summarize_inputs(events: list[dict]) -> list[str]:
     return out
 
 
-def _overlaps(t: dict, lo: str, hi: str) -> bool:
-    """转写片段 [ts_start,ts_end] 是否与时间窗 [lo,hi] 相交（ISO 串比较）。"""
-    return t["ts_start"] <= hi and t["ts_end"] >= lo
-
-
 class ActionBuilder:
     """会话级理解：帧流 → ActionStep 流。"""
 
-    def __init__(self, config: SunLensConfig, db: DB,
-                 backend: UnderstandBackend | None = None) -> None:
+    def __init__(self, config: SunLensConfig, db: DB) -> None:
         self.config = config
         self.db = db
-        self._backend = backend
 
-    def _get_backend(self) -> UnderstandBackend:
-        if self._backend is None:
-            from engine.understand.qwen_cloud import QwenCloudBackend
+    def _select_keyframes(self, frames: list[dict]) -> list[dict]:
+        """只保留视觉显著变化的关键帧，丢掉"同屏幕重复"的冗余帧。
 
-            self._backend = QwenCloudBackend(self.config)
-        return self._backend
+        逐帧比 aHash 与「上一个被保留的关键帧」的汉明距离，超阈值才留；
+        其间的输入事件由 build_session 归并进下一个关键帧的上下文，不丢操作。
+        关键帧过多时再按上限均匀抽样。
+        """
+        th = self.config.keyframe_diff_threshold
+        kept: list[dict] = []
+        last: int | None = None
+        for f in frames:
+            ah = f.get("ahash")
+            h = int(ah, 16) if ah else None
+            if last is None or h is None or hamming(h, last) / _BITS >= th:
+                kept.append(f)
+                if h is not None:
+                    last = h
+        cap = self.config.understand_max_frames
+        if cap and len(kept) > cap:
+            step = len(kept) / cap
+            kept = [kept[int(i * step)] for i in range(cap)]
+        return kept
 
-    def build_session(self, session_id: str, *, scrub: bool = True) -> int:
+    def build_session(self, session_id: str) -> int:
         session = self.db.get_session(session_id)
         if session is None:
             raise ValueError(f"未知会话: {session_id}")
         title = session.get("host_window_title", "")
 
-        frames = self.db.list_frames(session_id, limit=10000)
+        all_frames = self.db.list_frames(session_id, limit=10000)
         inputs = self.db.list_input_events(session_id)
-        transcripts = self.db.list_transcripts(session_id)
-        if not frames:
+        if not all_frames:
             logger.warning("会话 {} 无帧，跳过。", session_id)
             return 0
 
-        backend = self._get_backend()
-        prev_ts = session.get("started_at", frames[0]["ts"])
+        frames = self._select_keyframes(all_frames)
+        logger.info("关键帧采样：{} 帧 → {} 关键帧（省 {} 次模型调用）。",
+                    len(all_frames), len(frames), len(all_frames) - len(frames))
+
+        prev_ts = session.get("started_at", all_frames[0]["ts"])
         count = 0
+        history: list[str] = []  # 已理解步骤的滚动叙事上下文
 
         for f in frames:
             lo, hi = prev_ts, f["ts"]
             win_inputs = [e for e in inputs if lo <= e["ts"] <= hi]
-            win_narr = [t for t in transcripts if _overlaps(t, lo, hi)]
-            narration = " ".join(f"{t['speaker']}:{t['text']}" for t in win_narr)
             last_click = next((e for e in reversed(win_inputs) if e["kind"] == "click"), None)
 
             try:
@@ -102,30 +110,16 @@ class ActionBuilder:
                 prev_ts = f["ts"]
                 continue
 
-            if scrub:
-                img, _reds = scrub_image(img, self.config)
-            check_egress_allowed(
-                scrubbed=scrub, redact_enabled=self.config.redact_enabled,
-                allow_unredacted=not scrub,
-            )
-
-            recent = _summarize_inputs(win_inputs)
-            # demo-conditioned：检索相似历史增强理解（跨会话；本会话尚未索引）
-            history: list[str] = []
-            if self.config.memory_enabled and self.config.dashscope_api_key:
-                from engine.memory.search import retrieve
-                query = " ".join([title, *recent] + ([narration] if narration else []))
-                history = retrieve(self.config, self.db, query)
-
             ctx = FrameContext(
                 app_window_title=title,
                 click_xy=(last_click["x"], last_click["y"]) if last_click else None,
                 timestamp=f["ts"],
-                recent_inputs=recent,
-                narration=narration,
-                history=history,
+                recent_inputs=_summarize_inputs(win_inputs),
+                history=history[-5:],  # 最近 5 步作为叙事上下文，不再孤立描述
             )
-            u = backend.describe_frame(img, ctx)
+            u = describe_frame(self.config, img, ctx)
+            if u.description:
+                history.append(f"{(f['ts'] or '')[11:19]} {u.description}")
 
             self.db.insert_action_step(
                 session_id, f["id"], f["ts"],
@@ -133,21 +127,12 @@ class ActionBuilder:
                 target_app=u.app or None,
                 target_text=u.target or u.search_query or None,
                 bbox=None,
-                narration=narration or None,
+                narration=None,
                 nl_description=u.description or None,
                 confidence=None,
             )
             count += 1
             prev_ts = f["ts"]
-
-        # 理解完即索引进语义记忆，供以后检索/增强
-        if self.config.memory_enabled and self.config.dashscope_api_key:
-            try:
-                from engine.memory.index import index_session
-                n = index_session(self.config, self.db, session_id)
-                logger.info("已索引 {} 条进语义记忆。", n)
-            except Exception as e:  # pragma: no cover
-                logger.warning("索引语义记忆失败: {}", e)
 
         logger.info("会话 {} 理解完成，生成 {} 个 ActionStep。", session_id, count)
         return count

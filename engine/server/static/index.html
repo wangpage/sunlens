@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>向日葵学徒 · SunLens</title>
+<title>SunLens 学徒 · 实时记录</title>
 <style>
   :root{
     --bg:#131314; --panel:#1e1f20; --panel2:#232425; --line:#34353a;
@@ -11,8 +11,8 @@
   }
   *{box-sizing:border-box}
   body{margin:0;height:100vh;background:var(--bg);color:var(--txt);
-    font:14px/1.5 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;overflow:hidden}
-  .app{display:grid;grid-template-columns:300px 1fr 360px;gap:10px;height:100vh;padding:10px}
+    font:14px/1.5 -apple-system,"Microsoft YaHei","PingFang SC",sans-serif;overflow:hidden}
+  .app{display:grid;grid-template-columns:320px 1fr;gap:10px;height:100vh;padding:10px}
   .col{background:var(--panel);border-radius:14px;display:flex;flex-direction:column;min-height:0}
   .col h2{font-size:15px;font-weight:600;margin:0;padding:16px 18px;display:flex;
     align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)}
@@ -21,145 +21,91 @@
     border-radius:10px;padding:9px 12px;cursor:pointer;font-size:13px;width:100%}
   .btn:hover{border-color:var(--accent)}
   .muted{color:var(--dim);font-size:12px}
-  /* 左栏 */
   .search{display:flex;gap:6px;margin:10px 0}
   .search input{flex:1;background:var(--panel2);border:1px solid var(--line);
     border-radius:10px;color:var(--txt);padding:8px 10px;font-size:13px}
-  .sess{padding:10px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;cursor:pointer;
-    display:flex;align-items:flex-start;gap:8px}
+  .sess{padding:10px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;cursor:pointer}
   .sess:hover{border-color:var(--accent);background:var(--panel2)}
   .sess.active{border-color:var(--accent);background:#1d2a3a}
-  .sess .body{flex:1;min-width:0}
-  .sess input[type=checkbox]{margin-top:3px;width:16px;height:16px;accent-color:var(--accent);cursor:pointer}
-  .selhead{display:flex;justify-content:space-between;align-items:center;padding:6px 4px;font-size:12px;color:var(--dim)}
-  .selhead label{display:flex;gap:6px;align-items:center;cursor:pointer}
-  .selhead input{accent-color:var(--accent)}
   .sess .title{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .badge{font-size:11px;padding:1px 6px;border-radius:6px;background:#2a2b2c;color:var(--dim)}
   .badge.rec{background:#3a1d1d;color:#f28b82}
-  .left-split{display:flex;flex-direction:column;min-height:0;flex:1}
-  .section-label{font-size:12px;color:var(--dim);padding:14px 6px 6px;border-top:1px solid var(--line);margin-top:6px}
-  /* 中栏 */
-  .summary{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
+  .summary{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
   .stat{background:var(--panel2);border-radius:10px;padding:10px;text-align:center}
   .stat b{font-size:20px;display:block;color:var(--accent)}
   .tl-item{display:flex;gap:10px;padding:8px 4px;border-bottom:1px solid #2a2b2c}
   .tl-time{color:var(--dim);font-size:12px;min-width:60px;font-variant-numeric:tabular-nums}
   .tl-ico{width:22px;text-align:center}
   .tl-body{flex:1;min-width:0}
-  .tl-narr{color:var(--good);font-size:12px;margin-top:2px}
   .tl-thumb{height:54px;border-radius:6px;border:1px solid var(--line);margin-top:4px}
   .askwrap{border-top:1px solid var(--line)}
-  .chips{display:flex;gap:6px;padding:10px 12px 0;flex-wrap:wrap}
-  .chip{font-size:12px;padding:5px 10px;border:1px solid var(--line);border-radius:16px;
-    cursor:pointer;color:var(--dim);user-select:none}
-  .chip:hover{border-color:var(--accent)}
-  .chip.active{background:#1d2a3a;border-color:var(--accent);color:var(--txt)}
+  #chatlog{max-height:34vh;overflow:auto;padding:6px 12px 0}
   .ask{padding:10px 12px 12px;display:flex;gap:8px}
-  .ans-img{max-width:100%;border-radius:10px;border:1px solid var(--line);margin-top:6px}
   .ask input{flex:1;background:var(--panel2);border:1px solid var(--line);border-radius:22px;
     color:var(--txt);padding:11px 16px;font-size:13px}
   .ask button{background:var(--accent);border:none;color:#202124;border-radius:22px;padding:0 18px;cursor:pointer;font-weight:600}
   .hero{text-align:center;color:var(--dim);margin-top:14vh}
   .hero .wave{font-size:42px}
-  /* 右栏 Studio */
-  .studio{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:14px}
-  .card{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:14px;
-    cursor:pointer;position:relative;min-height:72px}
-  .card:hover{border-color:var(--accent)}
-  .card .ico{font-size:18px}
-  .card .name{font-weight:600;margin-top:8px;font-size:14px}
-  .card .beta{position:absolute;top:8px;right:8px;font-size:10px;background:#3a3550;color:#c9b8ff;padding:1px 6px;border-radius:6px}
-  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#000;
-    border:1px solid var(--line);padding:10px 16px;border-radius:10px;opacity:0;transition:.3s;pointer-events:none;z-index:50}
-  .toast.show{opacity:1}
-  /* 弹窗 */
+  .section-label{font-size:12px;color:var(--dim);padding:14px 4px 6px;border-top:1px solid var(--line);margin-top:10px}
+  .manual{padding:8px 10px;border:1px solid var(--line);border-radius:8px;margin-bottom:6px;font-size:13px;cursor:pointer}
+  .manual:hover{border-color:var(--accent)}
+  .sop-btn{width:auto;padding:5px 12px;font-size:13px}
+  .intent{margin:10px 10px 0;padding:12px 14px;background:#16202c;border:1px solid #2a3a4a;border-radius:12px}
+  .i-task{font-size:15px;font-weight:700;color:#cfe3ff;margin-bottom:6px}
+  .i-row{font-size:13px;margin:5px 0} .i-row b{color:var(--accent);font-weight:600;margin-right:6px}
+  .i-row ul{margin:4px 0 0 18px} .i-meta{font-size:12px;color:var(--dim);margin-top:8px}
+  .i-fix{display:flex;gap:6px;margin-top:10px}
+  .i-fix input{flex:1;background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--txt);padding:6px 10px;font-size:12px}
+  .i-fix button{background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:0 12px;cursor:pointer}
+  .i-hint{margin:10px;color:var(--dim);font-size:12px}
   .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;z-index:40;align-items:center;justify-content:center}
   .modal.show{display:flex}
   .modal-box{background:var(--panel);border:1px solid var(--line);border-radius:14px;
     width:min(820px,92vw);max-height:86vh;display:flex;flex-direction:column}
   .modal-head{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;
     border-bottom:1px solid var(--line);font-weight:600}
-  .modal-body{padding:18px;overflow:auto}
-  .modal-body table{border-collapse:collapse;width:100%;font-size:13px}
-  .modal-body th,.modal-body td{border:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}
-  .modal-body th{background:var(--panel2)}
-  .modal-body img{max-width:100%;border-radius:8px}
-  .fc{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:10px;cursor:pointer}
-  .fc .b{color:var(--good);margin-top:8px;display:none}
-  .fc.open .b{display:block}
-  .qz{margin-bottom:12px}
-  .qz .a{color:var(--good);margin-top:4px;display:none}
-  .qz.open .a{display:block}
-  .slide img{width:100%;border-radius:8px}
-  .manual{padding:8px 10px;border:1px solid var(--line);border-radius:8px;margin-bottom:6px;font-size:13px;
-    display:flex;gap:8px;align-items:flex-start}
-  .manual:hover{border-color:var(--accent)}
-  .manual input{margin-top:2px;accent-color:var(--accent);cursor:pointer}
-  .deck-slide{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:10px}
-  .deck-slide h4{margin:0 0 8px}
+  .modal-body{padding:18px 22px;overflow:auto;line-height:1.7}
+  .modal-body h1{font-size:20px} .modal-body h2{font-size:16px;margin-top:14px} .modal-body h3{font-size:14px}
+  .modal-body li{margin-left:18px}
 </style>
 </head>
 <body>
 <div class="app">
-  <!-- 左栏：来源 + 技能手册 -->
+  <!-- 左栏：来源 / 会话 -->
   <div class="col">
     <h2>来源 / 会话 <span class="muted" id="recDot"></span></h2>
-    <div class="scroll left-split">
-      <button class="btn" onclick="toast('录制请用命令行：sunlens start')">＋ 新录制 / 添加来源</button>
+    <div class="scroll">
+      <button class="btn" onclick="alert('录制请用命令行：sunlens start')">＋ 新录制（sunlens start）</button>
       <div class="search">
-        <input id="q" placeholder="搜索历史（动作/转写）" onkeydown="if(event.key==='Enter')doSearch()"/>
+        <input id="q" placeholder="搜索历史动作" onkeydown="if(event.key==='Enter')doSearch()"/>
         <button class="btn" style="width:auto" onclick="doSearch()">🔍</button>
       </div>
-      <div class="selhead" id="selhead" style="display:none">
-        <span>✨ 勾选会话用于生成 Studio 产物</span>
-        <label><input type="checkbox" id="selall" onchange="toggleAll(this.checked)"> 全选</label>
-      </div>
       <div id="sessions"></div>
-      <div class="section-label">📒 技能手册（M5 沉淀）</div>
-      <div id="manuals" class="muted">还没有技能手册。录制并理解后，M5 会把对方的工作流沉淀成 SOP。</div>
+      <div class="section-label">📒 技能手册 / SOP</div>
+      <div id="manuals" class="muted">还没有手册。选会话点右上「生成 SOP」。</div>
     </div>
   </div>
 
-  <!-- 中栏：总结 + 时间轴 + 问答 -->
+  <!-- 右栏：总结 + 时间轴 + 本地问答 -->
   <div class="col">
-    <h2>对话 / 时间轴 <span class="muted" id="midTitle"></span></h2>
+    <h2><span>意图 / 时间轴 <span class="muted" id="midTitle"></span></span>
+      <span style="display:flex;gap:6px">
+        <button class="btn sop-btn" onclick="runIntent()">🎯 分析意图</button>
+        <button class="btn sop-btn" onclick="runSop()">📄 生成 SOP</button></span></h2>
+    <div id="intentBox"></div>
     <div class="scroll" id="mid">
       <div class="hero"><div class="wave">👋</div><h3>选择左侧一个会话开始</h3>
-        <p>这里展示项目总结、对方操作时间轴，以及对历史的提问回答。</p></div>
+        <p>展示对方操作的时间轴，并可对历史做本地关键词检索。</p></div>
     </div>
     <div class="askwrap">
-      <div class="chips">
-        <span class="chip active" data-mode="local" onclick="setMode(this)">📒 本地问答</span>
-        <span class="chip" data-mode="web" onclick="setMode(this)">🌐 全网搜索</span>
-        <span class="chip" data-mode="research" onclick="setMode(this)">🔬 深度研究</span>
-        <span class="chip" data-mode="image" onclick="setMode(this)">🎨 图片生成</span>
-      </div>
+      <div id="chatlog"></div>
       <div class="ask">
-        <input id="ask" placeholder="提问 / 搜索 / 描述要生成的图片" onkeydown="if(event.key==='Enter')doAsk()"/>
+        <input id="ask" placeholder="问我：今天下午干了什么 / 那段视频讲了什么" onkeydown="if(event.key==='Enter')doAsk()"/>
         <button id="askBtn" onclick="doAsk()">提问</button>
       </div>
     </div>
   </div>
-
-  <!-- 右栏：Studio -->
-  <div class="col">
-    <h2>Studio</h2>
-    <div class="studio">
-      <div class="card" onclick="runStudio('audio','音频概览')"><div class="ico">🎧</div><div class="name">音频概览</div></div>
-      <div class="card" onclick="runStudio('presentation','演示文稿')"><span class="beta">Beta 版</span><div class="ico">🖼️</div><div class="name">演示文稿</div></div>
-      <div class="card" onclick="runStudio('video','视频概览')"><div class="ico">🎬</div><div class="name">视频概览</div></div>
-      <div class="card" onclick="runStudio('mindmap','思维导图')"><div class="ico">🕸️</div><div class="name">思维导图</div></div>
-      <div class="card" onclick="runStudio('report','报告 / SOP')"><div class="ico">📄</div><div class="name">报告 / SOP</div></div>
-      <div class="card" onclick="runStudio('flashcards','闪卡')"><div class="ico">🗂️</div><div class="name">闪卡</div></div>
-      <div class="card" onclick="runStudio('quiz','测验')"><div class="ico">❓</div><div class="name">测验</div></div>
-      <div class="card" onclick="runStudio('infographic','信息图')"><span class="beta">Beta 版</span><div class="ico">📊</div><div class="name">信息图</div></div>
-      <div class="card" onclick="runStudio('data_table','数据表格')"><div class="ico">▦</div><div class="name">数据表格</div></div>
-    </div>
-    <div class="muted" style="padding:0 16px">点卡片，对当前选中的会话生成对应产物。</div>
-  </div>
 </div>
-<div class="toast" id="toast"></div>
 
 <div class="modal" id="modal" onclick="if(event.target===this)closeModal()">
   <div class="modal-box">
@@ -169,42 +115,70 @@
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
 <script>
 let current = null;
 const $ = s => document.querySelector(s);
-function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200);}
-function studio(n){toast(n+'：从本次会话的操作+语音生成（M5/M7 接入中）');}
 const ACT_ICO={click:'👆',input:'⌨️',search:'🔍',open:'📂',switch:'🔀'};
+function esc(s){return (s||'').replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));}
 
-const selected = new Set();   // 勾选用于生成的会话
-const seenIds = new Set();
 async function loadSessions(){
   const s = await (await fetch('/api/sessions')).json();
   const rec = s.some(x=>x.status==='recording');
   $('#recDot').innerHTML = rec ? '<span class="badge rec">● 录制中</span>' : '';
-  s.forEach(x=>{ if(!seenIds.has(x.id)){ seenIds.add(x.id); selected.add(x.id); } }); // 新会话默认勾选
-  $('#selhead').style.display = s.length ? 'flex' : 'none';
   $('#sessions').innerHTML = s.map(x=>{
     const c=x.counts;
-    return `<div class="sess ${x.id===current?'active':''}">
-      <input type="checkbox" ${selected.has(x.id)?'checked':''} onclick="event.stopPropagation();toggleSel('${x.id}',this.checked)">
-      <div class="body" onclick="openSession('${x.id}')">
+    return `<div class="sess ${x.id===current?'active':''}" onclick="openSession('${x.id}')">
         <div class="title">${esc(x.host_window_title||x.id)}</div>
         <div class="muted">${x.started_at.slice(5,19).replace('T',' ')}
           · <span class="badge">${x.status}</span>
-          帧${c.frames} 动作${c.actions} 转写${c.transcripts}</div></div></div>`;
+          帧${c.frames} 动作${c.actions}</div></div>`;
   }).join('') || '<div class="muted">还没有会话。命令行 <b>sunlens start</b> 开录。</div>';
-  const all = s.length && s.every(x=>selected.has(x.id));
-  const cb=$('#selall'); if(cb) cb.checked = all;
-}
-function toggleSel(id,on){ on?selected.add(id):selected.delete(id); const cb=$('#selall'); }
-function toggleAll(on){
-  document.querySelectorAll('#sessions .sess input[type=checkbox]').forEach(c=>c.checked=on);
-  seenIds.forEach(id=> on?selected.add(id):selected.delete(id));
 }
 
-async function openSession(id){ current=id; loadSessions(); renderSession(); }
+async function openSession(id){ current=id; loadSessions(); renderSession(); loadIntent(id); }
+
+/* ---------- 意图摘要（会话级理解 + 反思 + 纠正）---------- */
+function intentCard(d){
+  if(!d || !d.task)
+    return '<div class="i-hint">还没分析意图。点右上「🎯 分析意图」，让它推理你这次<b>在干嘛、为什么、想获取什么信息</b>（含一次反思自检）。</div>';
+  const info = Array.isArray(d.info_sought)?d.info_sought:(d.info_sought?[d.info_sought]:[]);
+  const steps = Array.isArray(d.key_steps)?d.key_steps:(d.key_steps?[d.key_steps]:[]);
+  return `<div class="intent">
+    <div class="i-task">🎯 ${esc(d.task)}</div>
+    ${d.why?`<div class="i-row"><b>动机</b>${esc(d.why)}</div>`:''}
+    ${info.length?`<div class="i-row"><b>想获取的信息</b>${esc(info.join('；'))}</div>`:''}
+    ${steps.length?`<div class="i-row"><b>关键步骤</b><ul>${steps.map(s=>`<li>${esc(s)}</li>`).join('')}</ul></div>`:''}
+    ${d.outcome?`<div class="i-row"><b>结论</b>${esc(d.outcome)}</div>`:''}
+    <div class="i-meta">把握度 ${d.confidence??'—'}${d.reflection?` · 🤔 ${esc(d.reflection)}`:''}</div>
+    <div class="i-fix"><input id="corr" placeholder="理解得不对？纠正一句，它会吸取（越用越准）"
+      onkeydown="if(event.key==='Enter')submitCorrection()"><button onclick="submitCorrection()">纠正</button></div>
+  </div>`;
+}
+async function loadIntent(id){
+  $('#intentBox').innerHTML='';
+  try{ const d= await (await fetch('/api/intent/'+id)).json(); if(current===id) $('#intentBox').innerHTML=intentCard(d); }
+  catch(e){}
+}
+async function runIntent(){
+  if(!current){ alert('先在左侧选中一个会话'); return; }
+  if(_busy){ alert('已有一个生成任务在跑，请等它完成（本地模型一次只能处理一个）'); return; }
+  setBusy(true);
+  const stop=startElapsed(t=>$('#intentBox').innerHTML=`<div class="i-hint">分析意图中（草稿→反思自检）${t}</div>`, '·');
+  try{
+    const d= await (await fetch('/api/intent',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({session_id:current})})).json();
+    stop();
+    if(d.error){ $('#intentBox').innerHTML='<div class="i-hint">'+esc(d.error)+'</div>'; return; }
+    $('#intentBox').innerHTML=intentCard(d);
+  }catch(e){ stop(); $('#intentBox').innerHTML='<div class="i-hint">请求失败（看终端日志）</div>'; }
+  finally{ setBusy(false); }
+}
+async function submitCorrection(){
+  const el=$('#corr'); const t=(el?el.value:'').trim(); if(!t) return;
+  await fetch('/api/intent/correct',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({session_id:current,text:t})});
+  if(el){ el.value=''; el.placeholder='✅ 已记下，下次分析会吸取'; }
+}
 
 async function renderSession(){
   if(!current) return;
@@ -215,7 +189,6 @@ async function renderSession(){
   let html = `<div class="summary">
      <div class="stat"><b>${c.frames}</b>帧</div>
      <div class="stat"><b>${c.actions}</b>动作</div>
-     <div class="stat"><b>${c.transcripts}</b>转写</div>
      <div class="stat"><b>${c.inputs}</b>输入</div></div>`;
   if(c.actions===0 && c.frames>0)
     html += `<div class="muted" style="margin-bottom:10px">还没理解这次会话。命令行 <b>sunlens understand ${current}</b> 生成动作时间轴。</div>`;
@@ -225,9 +198,6 @@ async function renderSession(){
 
 function renderItem(it){
   const t=(it.ts||'').slice(11,19);
-  if(it.kind==='transcript')
-    return `<div class="tl-item"><div class="tl-time">${t}</div><div class="tl-ico">🎙</div>
-      <div class="tl-body"><b>${it.speaker}</b>：${esc(it.text)}</div></div>`;
   if(it.kind==='frame')
     return `<div class="tl-item"><div class="tl-time">${t}</div><div class="tl-ico">🖼</div>
       <div class="tl-body"><span class="muted">${it.trigger}</span><br>
@@ -235,122 +205,83 @@ function renderItem(it){
   const ico=ACT_ICO[it.type]||'•';
   return `<div class="tl-item"><div class="tl-time">${t}</div><div class="tl-ico">${ico}</div>
     <div class="tl-body">${it.app?`<b>${esc(it.app)}</b> · `:''}${esc(it.text||'')}
-      ${it.frame_id?`<br><img class="tl-thumb" src="/api/frame/${it.frame_id}" loading="lazy">`:''}
-      ${it.narration?`<div class="tl-narr">🎙 ${esc(it.narration)}</div>`:''}</div></div>`;
+      ${it.frame_id?`<br><img class="tl-thumb" src="/api/frame/${it.frame_id}" loading="lazy">`:''}</div></div>`;
 }
 
 async function doSearch(){
   const q=$('#q').value.trim(); if(!q) return;
   const r= await (await fetch('/api/search?q='+encodeURIComponent(q))).json();
   $('#mid').innerHTML = `<h3>搜索「${esc(q)}」：${r.length} 条</h3>` +
-    (r.map(x=>`<div class="tl-item"><div class="tl-ico">${x.kind==='transcript'?'🎙':'•'}</div>
+    (r.map(x=>`<div class="tl-item"><div class="tl-ico">•</div>
       <div class="tl-body">${esc(x.text||'')}<div class="muted">${x.session_id} · ${(x.ts||'').slice(5,19)}</div></div></div>`).join('')
      || '<div class="muted">没找到。</div>');
 }
 
-let askMode='local';
-const MODE_ICO={local:'📒',web:'🌐',research:'🔬',image:'🎨'};
-function setMode(el){
-  askMode=el.dataset.mode;
-  document.querySelectorAll('.chip').forEach(c=>c.classList.toggle('active',c===el));
-  $('#ask').placeholder = askMode==='image'?'描述要生成的图片':
-    askMode==='local'?'问本地历史（对方怎么排查X？）':'联网提问';
-}
 async function doAsk(){
-  const q=$('#ask').value.trim(); if(!q) return; $('#ask').value='';
-  const btn=$('#askBtn'); btn.textContent='…'; btn.disabled=true;
-  $('#mid').insertAdjacentHTML('afterbegin',
-    `<div class="tl-item"><div class="tl-ico">💬</div><div class="tl-body"><b>${MODE_ICO[askMode]} 问：</b>${esc(q)}<br><span class="muted">处理中…</span></div></div>`);
+  const q=$('#ask').value.trim(); if(!q) return;
+  if(_busy){ alert('已有一个任务在跑，请稍候（本地模型一次只能处理一个）'); return; }
+  $('#ask').value=''; setBusy(true);
+  const btn=$('#askBtn'); const oldtxt=btn.textContent; btn.textContent='…';
+  $('#chatlog').insertAdjacentHTML('afterbegin',
+    `<div class="tl-item" id="qa_live"><div class="tl-ico">💬</div><div class="tl-body"><b>📒 问：</b>${esc(q)}<br><span class="qa-st muted">本地模型思考中…</span></div></div>`);
+  const stop=startElapsed(t=>{ const n=document.querySelector('#qa_live .qa-st'); if(n) n.textContent=t; }, '本地模型思考中');
   try{
     const r= await (await fetch('/api/ask',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({q,mode:askMode})})).json();
-    let html=`<b>答：</b>${esc(r.answer)}`;
-    if(r.images && r.images.length) html += r.images.map(u=>`<br><img class="ans-img" src="${u}">`).join('');
-    $('#mid').firstChild.querySelector('.tl-body').innerHTML =
-      `<b>${MODE_ICO[askMode]} 问：</b>${esc(q)}<br>${html}`;
-  }catch(e){ toast('请求失败'); }
-  btn.textContent='提问'; btn.disabled=false;
+      body:JSON.stringify({q})})).json();
+    stop();
+    const node=document.querySelector('#qa_live .tl-body');
+    if(node) node.innerHTML=`<b>📒 问：</b>${esc(q)}<br><b>答：</b>${esc(r.answer)}`;
+    document.querySelector('#qa_live')?.removeAttribute('id');
+  }catch(e){ stop(); const n=document.querySelector('#qa_live .qa-st'); if(n) n.textContent='请求失败（看终端日志）'; }
+  finally{ setBusy(false); btn.textContent=oldtxt; }
 }
 
-function esc(s){return (s||'').replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));}
-
-/* ---------- Studio 插件 ---------- */
-function openModal(title){ $('#modalTitle').textContent=title; $('#modal').classList.add('show'); }
+/* ---------- Studio：报告 / SOP ---------- */
+function openModal(t){ $('#modalTitle').textContent=t; $('#modal').classList.add('show'); }
 function closeModal(){ $('#modal').classList.remove('show'); }
 function mdToHtml(md){ return esc(md)
   .replace(/^### (.*)$/gm,'<h3>$1</h3>').replace(/^## (.*)$/gm,'<h2>$1</h2>').replace(/^# (.*)$/gm,'<h1>$1</h1>')
-  .replace(/^\d+\. (.*)$/gm,'<li>$1</li>').replace(/^- (.*)$/gm,'<li>$1</li>')
+  .replace(/^\s*\d+\. (.*)$/gm,'<li>$1</li>').replace(/^\s*[-*] (.*)$/gm,'<li>$1</li>')
   .replace(/\*\*(.*?)\*\*/g,'<b>$1</b>').replace(/\n/g,'<br>'); }
 
-async function runStudio(pid,name){
-  const ids=Array.from(selected), mids=Array.from(selectedManuals);
-  if(!ids.length && !mids.length){ toast('先在左侧勾选会话或技能手册'); return; }
-  const srcN=ids.length+mids.length;
-  openModal(`${name}（${srcN} 个来源）…`);
-  $('#modalBody').innerHTML='<div class="muted">生成中…（联网产物需 DASHSCOPE_API_KEY）</div>';
+let _busy=false;
+function setBusy(b){ _busy=b; document.querySelectorAll('.sop-btn').forEach(x=>{x.disabled=b;x.style.opacity=b?0.5:1;}); }
+function startElapsed(setText, prefix){
+  let s=0; setText(`${prefix} 0s…（本地 32B，约 1–2 分钟，请勿重复点击或关闭）`);
+  const id=setInterval(()=>{ s++; setText(`${prefix} ${s}s…（本地 32B，约 1–2 分钟，请勿重复点击或关闭）`); },1000);
+  return ()=>clearInterval(id);
+}
+
+async function runSop(){
+  if(!current){ alert('先在左侧选中一个会话'); return; }
+  if(_busy){ alert('已有一个生成任务在跑，请等它完成（本地模型一次只能处理一个）'); return; }
+  setBusy(true);
+  openModal('生成 SOP 中…');
+  const stop=startElapsed(t=>$('#modalBody').innerHTML=`<div class="muted">${t}</div>`, '本地模型生成中');
   try{
-    const r= await (await fetch('/api/studio/'+pid,{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({session_ids:ids,manual_ids:mids})})).json();
-    $('#modalTitle').textContent=name;
-    $('#modalBody').innerHTML='';
-    renderResult(r);
-    if(pid==='report') loadManuals();   // 生成 SOP 后刷新左下手册
-  }catch(e){ $('#modalBody').innerHTML='<div class="muted">请求失败</div>'; }
+    const r= await (await fetch('/api/studio/sop',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({session_id:current})})).json();
+    stop();
+    if(r.type==='error'){ $('#modalBody').innerHTML='<div class="muted">'+esc(r.error)+'</div>'; return; }
+    $('#modalTitle').textContent=r.title; $('#modalBody').innerHTML=mdToHtml(r.data);
+    loadManuals();
+  }catch(e){ stop(); $('#modalBody').innerHTML='<div class="muted">请求失败（看终端日志）</div>'; }
+  finally{ setBusy(false); }
 }
-
-function renderResult(r){
-  const b=$('#modalBody');
-  if(r.type==='error'){ b.innerHTML=`<div class="muted">${esc(r.error)}</div>`; return; }
-  if(r.type==='table'){
-    b.innerHTML=`<table><tr>${r.columns.map(c=>`<th>${esc(c)}</th>`).join('')}</tr>`+
-      r.rows.map(row=>`<tr>${row.map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('')+'</table>'; return; }
-  if(r.type==='markdown'){ b.innerHTML=mdToHtml(r.data); return; }
-  if(r.type==='html'){ b.innerHTML=r.data; return; }
-  if(r.type==='mermaid'){
-    b.innerHTML=`<div class="mermaid">${esc(r.data)}</div>`;
-    try{ mermaid.run({nodes:b.querySelectorAll('.mermaid')}); }catch(e){ b.insertAdjacentHTML('beforeend','<pre>'+esc(r.data)+'</pre>'); }
-    return; }
-  if(r.type==='cards'){
-    b.innerHTML=r.data.map(c=>`<div class="fc" onclick="this.classList.toggle('open')">
-      <b>${esc(c.front)}</b><div class="b">${esc(c.back)}</div><div class="muted">点击翻面</div></div>`).join(''); return; }
-  if(r.type==='quiz'){
-    b.innerHTML=r.data.map((q,i)=>`<div class="qz" onclick="this.classList.toggle('open')">
-      <b>${i+1}. ${esc(q.q)}</b><div class="a">✅ ${esc(q.answer)}</div><div class="muted">点击看答案</div></div>`).join(''); return; }
-  if(r.type==='deck'){
-    b.innerHTML=r.data.map(s=>`<div class="deck-slide"><h4>${esc(s.title||'')}</h4>
-      <ul>${(s.bullets||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>`).join(''); return; }
-  if(r.type==='slides'){
-    b.innerHTML=r.data.map(s=>`<div class="slide" style="margin-bottom:14px">
-      <img src="/api/frame/${s.frame_id}" loading="lazy">
-      <div>${esc(s.caption||'')}</div>${s.narration?`<div class="tl-narr">🎙 ${esc(s.narration)}</div>`:''}</div>`).join(''); return; }
-  if(r.type==='audio'){
-    b.innerHTML=`<audio controls src="${r.url}" style="width:100%"></audio>
-      <h3>口播稿</h3><div>${esc(r.script||'').replace(/\n/g,'<br>')}</div>`; return; }
-  b.innerHTML='<pre>'+esc(JSON.stringify(r,null,2))+'</pre>';
-}
-
-/* ---------- 左下：技能手册 ---------- */
-const selectedManuals = new Set();
 async function loadManuals(){
   const m= await (await fetch('/api/manuals')).json();
   $('#manuals').innerHTML = m.length ? m.map(x=>
-    `<div class="manual">
-       <input type="checkbox" ${selectedManuals.has(x.id)?'checked':''}
-         onclick="event.stopPropagation();toggleManual(${x.id},this.checked)" style="accent-color:var(--accent)">
-       <span onclick="openManual(${x.id})" style="cursor:pointer">📄 ${esc(x.title)}
-         <span class="muted">· ${(x.created_at||'').slice(5,16).replace('T',' ')}</span></span>
-     </div>`).join('')
-    : '<div class="muted">还没有技能手册。勾选会话点右侧「报告/SOP」生成。</div>';
+    `<div class="manual" onclick="openManual(${x.id})">📄 ${esc(x.title)}
+       <div class="muted">${(x.created_at||'').slice(5,16).replace('T',' ')}</div></div>`).join('')
+    : '<div class="muted">还没有手册。选会话点右上「生成 SOP」。</div>';
 }
-function toggleManual(id,on){ on?selectedManuals.add(id):selectedManuals.delete(id); }
 async function openManual(id){
   const m= await (await fetch('/api/manual/'+id)).json();
   openModal(m.title||'技能手册'); $('#modalBody').innerHTML=mdToHtml(m.content||'');
 }
 
-try{ mermaid.initialize({startOnLoad:false,theme:'dark'}); }catch(e){}
 loadSessions(); loadManuals();
-setInterval(()=>{ loadSessions(); if(current) renderSession(); }, 3000);  // 边录边看
+setInterval(()=>{ if(_busy) return; loadSessions(); if(current) renderSession(); }, 3000);  // 边录边看（生成中暂停刷新，避免覆盖）
 </script>
 </body>
 </html>
